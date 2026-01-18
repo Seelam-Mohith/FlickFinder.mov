@@ -1,6 +1,6 @@
 import React from 'react'
-import Search from './components/search'
-import Spinner from './components/spinner'
+import Search from './components/Search'
+import Spinner from './components/Spinner'
 import MovieCard from './components/MovieCard'
 import NavBar from './components/NavBar'
 import { useState } from 'react'
