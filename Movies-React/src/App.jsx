@@ -3,6 +3,7 @@ import Search from './components/Search'
 import Spinner from './components/Spinner'
 import MovieCard from './components/MovieCard'
 import NavBar from './components/NavBar'
+import MovieModel from './components/MovieModel'
 import { useState } from 'react'
 import { useEffect } from 'react'
 import { useDebounce } from 'react-use'
@@ -24,6 +25,9 @@ const App = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [debounceSearchTerm, setDebouncedSearchTerm] = useState('');
   const [trendingMovies, setTrendingMovies] = useState([]);
+  const [selectedMovieId, setSelectedMovieId] = useState(null);
+  const [movieDetails, setMovieDetails] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useDebounce( 
      () => setDebouncedSearchTerm(searchTerm), 
@@ -34,16 +38,6 @@ const App = () => {
   const fetchMovies = async () => {
     setIsLoading(true);
     setErrorMessage('');
-
-    const loadTrendingMovies = async() => {
-      try {
-        const movies = await getTrendingMovies();
-
-        setTrendingMovies(movies); 
-      } catch{
-        console.log(`Error fetching movies: ${error}`);
-      }
-    }
 
     try {
       const endpoint = debounceSearchTerm 
@@ -110,6 +104,28 @@ const App = () => {
     loadTrendingMovies()
   }, [])
   
+
+  useEffect(() => {
+    if (!selectedMovieId) return;
+
+    const fetchMovieDetails = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/movie/${selectedMovieId}?api_key=${API_KEY}`
+        );
+
+        const data = await res.json();
+        setMovieDetails(data);
+      } 
+      catch (error){
+        console.log("Failed to fetch movie details", error)
+      }
+    };
+
+    fetchMovieDetails();
+  }, [selectedMovieId]);
+
+
   return (
     <>
       <NavBar />
@@ -150,12 +166,28 @@ const App = () => {
         ) : (
           <ul>
             {movieList.map((movie) => (
-              <MovieCard key={movie.id} movie={movie}/>
-            ))}
+                <MovieCard
+                  key={movie.id}
+                  movie={movie}
+                  onClick={() => {
+                    setSelectedMovieId(movie.id);
+                    setIsModalOpen(true);
+                  }}
+                />
+              ))}
           </ul>
         )}
 
         </section>
+        <MovieModel
+          isOpen={isModalOpen}
+          movie={movieDetails}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedMovieId(null);
+            setMovieDetails(null);
+          }}
+        />
 
       </div>
     </main>
