@@ -1,4 +1,11 @@
 {
+  "name": "react-movie-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix Movies-React run dev",
+    "build": "npm --prefix Movies-React run build",
+    "preview": "npm --prefix Movies-React run preview"
+  },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "react-use": "^17.6.0",

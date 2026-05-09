@@ -7,15 +7,63 @@ import MovieModel from './components/MovieModel'
 import { useState } from 'react'
 import { useEffect } from 'react'
 import { useDebounce } from 'react-use'
-import { client, updateSearchCount, getTrendingMovies } from './appwrite.js'
+import { client, updateSearchCount, getTrendingMovies, isAppwriteReady } from './appwrite.js'
 
 const API_BASE_URL = 'https://api.themoviedb.org/3';
 
-const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const API_KEY = import.meta.env.VITE_TMDB_API_KEY?.trim();
+const API_BEARER_TOKEN = import.meta.env.VITE_TMDB_BEARER_TOKEN?.trim();
 
 const API_OPTIONS = {
-  method: 'GET'
+  method: 'GET',
+  headers: {
+    'Content-Type': 'application/json',
+    ...(API_BEARER_TOKEN ? { Authorization: `Bearer ${API_BEARER_TOKEN}` } : {})
+  }
 }
+
+const TMDB_TIMEOUT_MS = 12000;
+
+const withTmdbAuth = (pathWithQuery) => {
+  if (API_KEY) {
+    const separator = pathWithQuery.includes('?') ? '&' : '?';
+    return `${API_BASE_URL}${pathWithQuery}${separator}api_key=${encodeURIComponent(API_KEY)}`;
+  }
+
+  if (API_BEARER_TOKEN) {
+    return `${API_BASE_URL}${pathWithQuery}`;
+  }
+
+  throw new Error('Missing TMDB credentials. Set VITE_TMDB_API_KEY or VITE_TMDB_BEARER_TOKEN in environment variables.');
+};
+
+const fetchTmdbJson = async (endpoint) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TMDB_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(endpoint, { ...API_OPTIONS, signal: controller.signal });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch movies (${response.status}): ${errorText || response.statusText}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('TMDB request timed out. Check internet, VPN, proxy, or firewall and try again.');
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error('Network error reaching TMDB. Please check your internet connection and try again.');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
 
 const App = () => {
 
@@ -41,16 +89,10 @@ const App = () => {
 
     try {
       const endpoint = debounceSearchTerm 
-      ? `${API_BASE_URL}/search/movie?query=${encodeURIComponent(debounceSearchTerm)}&api_key=${API_KEY}`
-      : `${API_BASE_URL}/discover/movie?sort_by=popularity.desc&api_key=${API_KEY}`;
+      ? withTmdbAuth(`/search/movie?query=${encodeURIComponent(debounceSearchTerm)}`)
+      : withTmdbAuth('/discover/movie?sort_by=popularity.desc');
 
-      const response = await fetch(endpoint, API_OPTIONS);
-
-      if(!response.ok) {
-        throw new Error('Failed to fetch movies');
-      }
-
-      const data = await response.json();
+      const data = await fetchTmdbJson(endpoint);
 
       if (!data.results || data.results.length === 0) {
         setErrorMessage('No movies found');
@@ -66,7 +108,7 @@ const App = () => {
 
     } catch (error) {
       console.log(`Error fetching movies: ${error}`);
-      setErrorMessage('Error fetching movies. Please try again later..');
+      setErrorMessage(error?.message || 'Error fetching movies. Please try again later..');
     } finally {
       setIsLoading(false)
     }
@@ -89,6 +131,8 @@ const App = () => {
 
   useEffect(() => {
     const pingAppwrite = async () => {
+      if (!isAppwriteReady) return;
+
       try {
         await client.ping();
         console.log('Appwrite connection successful');
@@ -110,11 +154,7 @@ const App = () => {
 
     const fetchMovieDetails = async () => {
       try {
-        const res = await fetch(
-          `${API_BASE_URL}/movie/${selectedMovieId}?api_key=${API_KEY}`
-        );
-
-        const data = await res.json();
+        const data = await fetchTmdbJson(withTmdbAuth(`/movie/${selectedMovieId}`));
         setMovieDetails(data);
       } 
       catch (error){

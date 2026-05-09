@@ -1,0 +1,5 @@
+{
+  "installCommand": "npm install --prefix Movies-React",
+  "buildCommand": "npm --prefix Movies-React run build",
+  "outputDirectory": "Movies-React/dist"
+}
