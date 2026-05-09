@@ -237,4 +237,4 @@ const App = () => {
 
 export default App
 
-
+// Before Adding Redux
