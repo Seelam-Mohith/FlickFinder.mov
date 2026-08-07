@@ -9,54 +9,43 @@ import { useEffect } from 'react'
 import { useDebounce } from 'react-use'
 import { client, updateSearchCount, getTrendingMovies, isAppwriteReady } from './appwrite.js'
 
-const API_BASE_URL = 'https://api.themoviedb.org/3';
+const API_BASE_URL = 'https://api.tvmaze.com';
 
-const API_KEY = import.meta.env.VITE_TMDB_API_KEY?.trim();
-const API_BEARER_TOKEN = import.meta.env.VITE_TMDB_BEARER_TOKEN?.trim();
+const API_TIMEOUT_MS = 12000;
 
-const API_OPTIONS = {
-  method: 'GET',
-  headers: {
-    'Content-Type': 'application/json',
-    ...(API_BEARER_TOKEN ? { Authorization: `Bearer ${API_BEARER_TOKEN}` } : {})
-  }
-}
+const mapShow = (show) => ({
+  id: show.id,
+  title: show.name,
+  posterUrl: show.image?.original || show.image?.medium || null,
+  vote_average: show.rating?.average ?? 0,
+  release_date: show.premiered,
+  original_language: show.language,
+  overview: show.summary ? show.summary.replace(/<[^>]+>/g, '').trim() : '',
+  runtime: show.runtime,
+  genres: show.genres || [],
+  homepage: show.officialSite || show.url || null,
+});
 
-const TMDB_TIMEOUT_MS = 12000;
-
-const withTmdbAuth = (pathWithQuery) => {
-  if (API_KEY) {
-    const separator = pathWithQuery.includes('?') ? '&' : '?';
-    return `${API_BASE_URL}${pathWithQuery}${separator}api_key=${encodeURIComponent(API_KEY)}`;
-  }
-
-  if (API_BEARER_TOKEN) {
-    return `${API_BASE_URL}${pathWithQuery}`;
-  }
-
-  throw new Error('Missing TMDB credentials. Set VITE_TMDB_API_KEY or VITE_TMDB_BEARER_TOKEN in environment variables.');
-};
-
-const fetchTmdbJson = async (endpoint) => {
+const fetchTvmazeJson = async (endpoint) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TMDB_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
-    const response = await fetch(endpoint, { ...API_OPTIONS, signal: controller.signal });
+    const response = await fetch(endpoint, { signal: controller.signal });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Failed to fetch movies (${response.status}): ${errorText || response.statusText}`);
+      throw new Error(`Failed to fetch shows (${response.status}): ${errorText || response.statusText}`);
     }
 
     return response.json();
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new Error('TMDB request timed out. Check internet, VPN, proxy, or firewall and try again.');
+      throw new Error('TVMaze request timed out. Check internet, VPN, proxy, or firewall and try again.');
     }
 
     if (error instanceof TypeError) {
-      throw new Error('Network error reaching TMDB. Please check your internet connection and try again.');
+      throw new Error('Network error reaching TVMaze. Please check your internet connection and try again.');
     }
 
     throw error;
@@ -83,32 +72,33 @@ const App = () => {
      [searchTerm]
   );
   
-  const fetchMovies = async () => {
+  const fetchShows = async () => {
     setIsLoading(true);
     setErrorMessage('');
 
     try {
-      const endpoint = debounceSearchTerm 
-      ? withTmdbAuth(`/search/movie?query=${encodeURIComponent(debounceSearchTerm)}`)
-      : withTmdbAuth('/discover/movie?sort_by=popularity.desc');
+      const data = debounceSearchTerm
+        ? await fetchTvmazeJson(`${API_BASE_URL}/search/shows?q=${encodeURIComponent(debounceSearchTerm)}`)
+        : await fetchTvmazeJson(`${API_BASE_URL}/shows?page=0`);
 
-      const data = await fetchTmdbJson(endpoint);
+      const rawShows = debounceSearchTerm ? (data || []).map(item => item?.show) : (data || []);
+      const shows = rawShows.filter(Boolean).map(mapShow);
 
-      if (!data.results || data.results.length === 0) {
-        setErrorMessage('No movies found');
+      if (shows.length === 0) {
+        setErrorMessage('No shows found');
         setMovieList([]);
-        return;        
+        return;
       }
 
-      setMovieList(data.results || []);
+      setMovieList(shows);
 
-      if(debounceSearchTerm && data.results.length > 0){
-        await updateSearchCount(debounceSearchTerm, data.results[0]);
+      if (debounceSearchTerm && shows.length > 0) {
+        await updateSearchCount(debounceSearchTerm, shows[0]);
       }
 
     } catch (error) {
-      console.log(`Error fetching movies: ${error}`);
-      setErrorMessage(error?.message || 'Error fetching movies. Please try again later..');
+      console.log(`Error fetching shows: ${error}`);
+      setErrorMessage(error?.message || 'Error fetching shows. Please try again later..');
     } finally {
       setIsLoading(false)
     }
@@ -125,7 +115,7 @@ const App = () => {
   }
 
   useEffect(() => {
-    fetchMovies();
+    fetchShows();
   }
   , [debounceSearchTerm])
 
@@ -137,6 +127,10 @@ const App = () => {
         await client.ping();
         console.log('Appwrite connection successful');
       } catch (error) {
+        if (typeof error?.message === 'string' && error.message.includes('Project is paused')) {
+          console.warn('Appwrite project is paused; trending/search tracking disabled. Restore it from the Appwrite console to re-enable.');
+          return;
+        }
         console.error('Appwrite ping failed:', error);
       }
     };
@@ -152,17 +146,17 @@ const App = () => {
   useEffect(() => {
     if (!selectedMovieId) return;
 
-    const fetchMovieDetails = async () => {
+    const fetchShowDetails = async () => {
       try {
-        const data = await fetchTmdbJson(withTmdbAuth(`/movie/${selectedMovieId}`));
-        setMovieDetails(data);
+        const data = await fetchTvmazeJson(`${API_BASE_URL}/shows/${selectedMovieId}`);
+        setMovieDetails(mapShow(data));
       } 
       catch (error){
-        console.log("Failed to fetch movie details", error)
+        console.log("Failed to fetch show details", error)
       }
     };
 
-    fetchMovieDetails();
+    fetchShowDetails();
   }, [selectedMovieId]);
 
 

@@ -5,10 +5,19 @@ const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID;
 const COLLECTION_ID = import.meta.env.VITE_APPWRITE_COLLECTION_ID;
 const isAppwriteReady = Boolean(PROJECT_ID && DATABASE_ID && COLLECTION_ID);
 
-let appwriteCollectionUnavailable = false;
+let appwriteUnavailable = false;
 
 const isMissingCollectionError = (error) =>
     error?.code === 404 && typeof error?.message === 'string' && error.message.includes('Collection with the requested ID');
+
+const isPausedProjectError = (error) =>
+    typeof error?.message === 'string' && error.message.includes('Project is paused');
+
+const disableAppwrite = () => {
+    if (appwriteUnavailable) return;
+    appwriteUnavailable = true;
+    console.warn('Appwrite search tracking/trending disabled: the project is paused or the configured collection was not found. Restore it from the Appwrite console to re-enable.');
+};
 
 const client = new Client().setEndpoint(import.meta.env.VITE_APPWRITE_ENDPOINT || "https://sfo.cloud.appwrite.io/v1");
 
@@ -22,7 +31,7 @@ const databases = PROJECT_ID ? new Databases(client) : null;
 export { client, account, databases, isAppwriteReady };
 
 export const updateSearchCount = async(searchTerm, movie) => {
-    if (!databases || !isAppwriteReady || appwriteCollectionUnavailable) {
+    if (!databases || !isAppwriteReady || appwriteUnavailable) {
         return;
     }
 
@@ -38,13 +47,12 @@ export const updateSearchCount = async(searchTerm, movie) => {
                 searchTerm, 
                 count: 1, 
                 movie_id: movie.id, 
-                poster_url: `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+                poster_url: movie.posterUrl || '',
             })
         }
     } catch (error) {
-        if (isMissingCollectionError(error)) {
-            appwriteCollectionUnavailable = true;
-            console.warn('Appwrite trending disabled: configured collection was not found.');
+        if (isMissingCollectionError(error) || isPausedProjectError(error)) {
+            disableAppwrite();
             return;
         }
 
@@ -53,7 +61,7 @@ export const updateSearchCount = async(searchTerm, movie) => {
 }
 
 export const getTrendingMovies = async () => { 
-    if (!databases || !isAppwriteReady || appwriteCollectionUnavailable) {
+    if (!databases || !isAppwriteReady || appwriteUnavailable) {
         return [];
     }
 
@@ -64,9 +72,8 @@ export const getTrendingMovies = async () => {
         ])
         return result.documents;
     }catch(error){
-        if (isMissingCollectionError(error)) {
-            appwriteCollectionUnavailable = true;
-            console.warn('Appwrite trending disabled: configured collection was not found.');
+        if (isMissingCollectionError(error) || isPausedProjectError(error)) {
+            disableAppwrite();
             return [];
         }
 

@@ -21,7 +21,7 @@ const MovieModel = ({ isOpen, movie, onClose }) => {
                 <div className="absolute inset-0 bg-[#0b0b1f]/85 p-8 flex flex-col">
                     <div className="flex flex-col lg:flex-row gap-8 flex-1 overflow-y-auto">
                         <img
-                            src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
+                            src={movie.posterUrl || '/no-movie.png'}
                             className="w-full max-w-xs self-center lg:self-start rounded-xl shadow-lg"
                             alt={movie.title}
                         />
@@ -30,19 +30,19 @@ const MovieModel = ({ isOpen, movie, onClose }) => {
                             <div>
                                 <h2 className="text-3xl font-bold leading-tight">{movie.title}</h2>
                                 <p className="text-sm text-gray-400 mt-1">
-                                    {movie.release_date} | {movie.runtime} min
+                                    {movie.release_date} | {movie.runtime ?? 'N/A'} min
                                 </p>
                             </div>
 
                             <p className="text-gray-200 leading-relaxed">{movie.overview}</p>
 
                             <div className="flex flex-wrap gap-2">
-                                {movie.genres?.map((g) => (
+                                {movie.genres?.map((genre) => (
                                     <span
-                                        key={g.id}
+                                        key={genre}
                                         className="px-3 py-1 bg-purple-600/80 rounded-full text-sm"
                                     >
-                                        {g.name}
+                                        {genre}
                                     </span>
                                 ))}
                             </div>
